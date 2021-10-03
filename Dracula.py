@@ -24,7 +24,7 @@ from functools import reduce
 ##   Prefer stable coin (USDT, BUSDT etc) pairs, instead of BTC or ETH pairs.                            ##
 ##   Highly recommended to blacklist leveraged tokens (*BULL, *BEAR, *UP, *DOWN etc).                    ##
 ##   Ensure that you don't override any variables in you config.json. Especially                         ##
-##   the timeframe (must be 1m).                                                                         ##
+##   the timeframe (should be 5m).                                                                       ##
 ##                                                                                                       ##
 ###########################################################################################################
 ###########################################################################################################
