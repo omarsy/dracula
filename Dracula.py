@@ -6,10 +6,8 @@ from pandas import DataFrame
 # --------------------------------
 
 import talib.abstract as taa
-import talib
 import ta
 from functools import reduce
-
 
 ###########################################################################################################
 ##                Dracula by 6h057                                                                       ##
@@ -33,6 +31,40 @@ from functools import reduce
 ##                                                                                                       ##
 ###########################################################################################################
 
+
+class SupResFinder():
+    def isSupport(self, df,i):
+        support = df['bb_bbl_i'][i] == 1  and df['bb_bbl_i'][i+1] == 0 
+
+        return support
+
+    def isResistance(self, df,i):
+        resistance = df['bb_bbh_i'][i] == 1  and df['bb_bbh_i'][i+1] == 0 
+
+        return resistance
+    
+    def getSupport(self, df):
+        levels = [df['close'][0]]
+        
+        for i in range(1, df.shape[0]-1):
+            if self.isSupport(df,i):
+                l = df['close'][i]
+                levels.append(l)
+            else:
+                levels.append(levels[-1])
+        levels.append(levels[-1])
+        return levels
+    def getResistance(self, df):
+        levels = [df['close'][0]]
+        
+        for i in range(1, df.shape[0]-1):
+            if self.isResistance(df,i):
+                l = df['close'][i]
+                levels.append(l)
+            else:
+                levels.append(levels[-1])
+        levels.append(levels[-1])
+        return levels
 class Dracula(IStrategy):
 
     # Buy hyperspace params:
@@ -65,7 +97,7 @@ class Dracula(IStrategy):
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.1
     custom_info = {}
-    
+    supResFinder = SupResFinder()
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
 
         dataframe['bb_bbh_i'] = ta.volatility.bollinger_hband_indicator(close=dataframe["high"], window=20)
@@ -75,6 +107,8 @@ class Dracula(IStrategy):
         dataframe['bb_bbt'] = (dataframe['bb_bbh'] - dataframe['bb_bbl']) / dataframe['bb_bbh']
 
         dataframe['ema'] = taa.EMA(dataframe, timeperiod=150)
+        dataframe['resistance'] = self.supResFinder.getResistance(dataframe)
+        dataframe['support'] = self.supResFinder.getSupport(dataframe)
         return dataframe
 
     def populate_buy_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
@@ -82,6 +116,7 @@ class Dracula(IStrategy):
 
         conditions.append(dataframe['volume'] > 0)
         conditions.append(dataframe['bb_bbl_i'].shift(1) == 1)
+        conditions.append(dataframe['close'].shift(1) >= dataframe['support'].shift(2))
         conditions.append(dataframe['ema'].shift(1) < dataframe['close'].shift(1))
         conditions.append((dataframe['open'] < dataframe['close']))
         conditions.append((dataframe['bb_bbt'] > self.buy_bbt.value))
@@ -100,6 +135,7 @@ class Dracula(IStrategy):
         item_sell_logic = []
         item_sell_logic.append(dataframe['bb_bbh_i'].shift(1) == 1)
         item_sell_logic.append(dataframe['close'] < dataframe['open'])
+        item_sell_logic.append(dataframe['close'].shift(1) < dataframe['resistance'].shift(2))
         item_sell_logic.append(dataframe['volume'] > 0)
         conditions.append(reduce(lambda x, y: x & y, item_sell_logic))
         item_sell_logic = []
