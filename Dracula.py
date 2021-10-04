@@ -8,6 +8,7 @@ from pandas import DataFrame
 import talib.abstract as taa
 import ta
 from functools import reduce
+import numpy as np
 
 ###########################################################################################################
 ##                Dracula by 6h057                                                                       ##
@@ -99,11 +100,11 @@ class Dracula(IStrategy):
     custom_info = {}
     supResFinder = SupResFinder()
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
-
-        dataframe['bb_bbh_i'] = ta.volatility.bollinger_hband_indicator(close=dataframe["high"], window=20)
-        dataframe['bb_bbl_i'] = ta.volatility.bollinger_lband_indicator(close=dataframe["low"], window=20)
         dataframe['bb_bbh'] = ta.volatility.bollinger_hband(close=dataframe["close"], window=20)
         dataframe['bb_bbl'] = ta.volatility.bollinger_lband(close=dataframe["close"], window=20)
+
+        dataframe['bb_bbh_i'] = dataframe['high'] >= dataframe['bb_bbh']
+        dataframe['bb_bbl_i'] = ta.volatility.bollinger_lband_indicator(close=dataframe["low"], window=20)
         dataframe['bb_bbt'] = (dataframe['bb_bbh'] - dataframe['bb_bbl']) / dataframe['bb_bbh']
 
         dataframe['ema'] = taa.EMA(dataframe, timeperiod=150)
