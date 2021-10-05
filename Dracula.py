@@ -56,11 +56,11 @@ class SupResFinder():
         levels.append(levels[-1])
         return levels
     def getResistance(self, df):
-        levels = [df['close'][0]]
+        levels = [df['open'][0]]
         
         for i in range(1, df.shape[0]-1):
             if self.isResistance(df,i):
-                l = df['close'][i]
+                l = df['open'][i]
                 levels.append(l)
             else:
                 levels.append(levels[-1])
