@@ -35,12 +35,12 @@ import numpy as np
 
 class SupResFinder():
     def isSupport(self, df,i):
-        support = df['bb_bbl_i'][i] == 1  and df['bb_bbl_i'][i+1] == 0 
+        support = df['bb_bbl_i'][i] == 1  and (df['bb_bbl_i'][i+1] == 0 or df['close'][i+1] > df['open'][i+1]) and df['close'][i] < df['open'][i]
 
         return support
 
     def isResistance(self, df,i):
-        resistance = df['bb_bbh_i'][i] == 1  and df['bb_bbh_i'][i+1] == 0 
+        resistance = df['bb_bbh_i'][i] == 1  and (df['bb_bbh_i'][i+1] == 0 or df['close'][i+1] < df['open'][i+1])  and df['close'][i] > df['open'][i]
 
         return resistance
     
@@ -49,7 +49,9 @@ class SupResFinder():
         
         for i in range(1, df.shape[0]-1):
             if self.isSupport(df,i):
-                l = df['close'][i]
+                o = df['open'][i]
+                c = df['close'][i]
+                l = c if c < o  else o
                 levels.append(l)
             else:
                 levels.append(levels[-1])
@@ -60,7 +62,9 @@ class SupResFinder():
         
         for i in range(1, df.shape[0]-1):
             if self.isResistance(df,i):
-                l = df['open'][i]
+                o = df['open'][i]
+                c = df['close'][i]
+                l = c if c > o  else o
                 levels.append(l)
             else:
                 levels.append(levels[-1])
@@ -114,17 +118,28 @@ class Dracula(IStrategy):
 
     def populate_buy_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         conditions = []
+        item_buy_logic = []
+        item_buy_logic.append(dataframe['volume'] > 0)
+        item_buy_logic.append(dataframe['bb_bbl_i'].shift(1) == 1)
+        item_buy_logic.append(dataframe['close'].shift(1) >= dataframe['support'].shift(2))
+        item_buy_logic.append(dataframe['ema'].shift(1) < dataframe['close'].shift(1))
+        item_buy_logic.append((dataframe['open'] < dataframe['close']))
+        item_buy_logic.append(dataframe['open'].shift(1) > dataframe['close'].shift(1))
+        item_buy_logic.append((dataframe['bb_bbt'] > self.buy_bbt.value))
+        conditions.append(reduce(lambda x, y: x & y, item_buy_logic))
 
-        conditions.append(dataframe['volume'] > 0)
-        conditions.append(dataframe['bb_bbl_i'].shift(1) == 1)
-        conditions.append(dataframe['close'].shift(1) >= dataframe['support'].shift(2))
-        conditions.append(dataframe['ema'].shift(1) < dataframe['close'].shift(1))
-        conditions.append((dataframe['open'] < dataframe['close']))
-        conditions.append((dataframe['bb_bbt'] > self.buy_bbt.value))
+        item_buy_logic = []
+        item_buy_logic.append(dataframe['volume'] > 0)
+        item_buy_logic.append(dataframe['bb_bbl_i'] == 1)
+        item_buy_logic.append(dataframe['open'] >= dataframe['support'].shift(2))
+        item_buy_logic.append(dataframe['ema'].shift(1) < dataframe['close'].shift(1))
+        item_buy_logic.append((dataframe['open'] < dataframe['close']))
+        item_buy_logic.append((dataframe['bb_bbt'] > 0.025))
+        conditions.append(reduce(lambda x, y: x & y, item_buy_logic))
 
         if conditions:
             dataframe.loc[
-                reduce(lambda x, y: x & y, conditions),
+                reduce(lambda x, y: x | y, conditions),
                 'buy'] = 1
 
         
@@ -136,7 +151,14 @@ class Dracula(IStrategy):
         item_sell_logic = []
         item_sell_logic.append(dataframe['bb_bbh_i'].shift(1) == 1)
         item_sell_logic.append(dataframe['close'] < dataframe['open'])
+        item_sell_logic.append(dataframe['close'].shift(1) > dataframe['open'].shift(1))
         item_sell_logic.append(dataframe['close'].shift(1) < dataframe['resistance'].shift(2))
+        item_sell_logic.append(dataframe['volume'] > 0)
+        conditions.append(reduce(lambda x, y: x & y, item_sell_logic))
+        item_sell_logic = []
+        item_sell_logic.append(dataframe['bb_bbh_i'] == 1)
+        item_sell_logic.append(dataframe['close'] < dataframe['open'])
+        item_sell_logic.append(dataframe['open'] < dataframe['resistance'].shift(2))
         item_sell_logic.append(dataframe['volume'] > 0)
         conditions.append(reduce(lambda x, y: x & y, item_sell_logic))
         item_sell_logic = []
