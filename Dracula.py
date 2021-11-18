@@ -5,6 +5,7 @@ from freqtrade.strategy.interface import IStrategy
 from pandas import DataFrame
 # --------------------------------
 
+from pandas import DataFrame, Series
 from freqtrade.persistence import Trade
 from datetime import datetime
 import talib.abstract as taa
@@ -42,6 +43,26 @@ def EWO(dataframe, ema_length=5, ema2_length=35):
     emadif = (ema1 - ema2) / df['close'] * 100
     return emadif
 
+def chaikin_money_flow(dataframe, n=20, fillna=False):
+    """Chaikin Money Flow (CMF)
+    It measures the amount of Money Flow Volume over a specific period.
+    http://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:chaikin_money_flow_cmf
+    Args:
+        dataframe(pandas.Dataframe): dataframe containing ohlcv
+        n(int): n period.
+        fillna(bool): if True, fill nan values.
+    Returns:
+        pandas.Series: New feature generated.
+    """
+    df = dataframe.copy()
+    mfv = ((df['close'] - df['low']) - (df['high'] - df['close'])) / (df['high'] - df['low'])
+    mfv = mfv.fillna(0.0)  # float division by zero
+    mfv *= df['volume']
+    cmf = (mfv.rolling(n, min_periods=0).sum()
+           / df['volume'].rolling(n, min_periods=0).sum())
+    if fillna:
+        cmf = cmf.replace([np.inf, -np.inf], np.nan).fillna(0)
+    return Series(cmf, name='cmf')
 
 class SupResFinder():
     def isSupport(self, df, i):
@@ -114,16 +135,6 @@ class Dracula(IStrategy):
 
     buy_bbt = DecimalParameter(
         0, 100, decimals=4, default=0.023, space='buy')
-    ewo_low = DecimalParameter(-20.0, -8.0,
-                               default=buy_params['ewo_low'], space='buy', optimize=True)
-    ewo_high = DecimalParameter(
-        2.0, 12.0, default=buy_params['ewo_high'], space='buy', optimize=True)
-    rsi_buy = IntParameter(30, 70, default=buy_params['rsi_buy'], space='buy', optimize=True)
-    low_offset = DecimalParameter(
-        0.9, 0.99, default=buy_params['low_offset'], space='buy', optimize=True)
-    ##Sell
-    high_offset = DecimalParameter(
-        0.99, 1.1, default=sell_params['high_offset'], space='sell', optimize=True)
     # Buy hypers
     timeframe = '1m'
     # Protection
@@ -150,11 +161,7 @@ class Dracula(IStrategy):
         dataframe['resistance'] = self.supResFinder.getResistance(dataframe)
         dataframe['support'] = self.supResFinder.getSupport(dataframe)
 
-        dataframe['ema_16'] = taa.EMA(dataframe, timeperiod=16)
-        dataframe['ema_49'] = taa.EMA(dataframe, timeperiod=49)
-
-        # Elliot
-        dataframe['EWO'] = EWO(dataframe, self.fast_ewo, self.slow_ewo)
+        dataframe['cmf'] = chaikin_money_flow(dataframe, 20)
 
         # RSI
         dataframe['rsi'] = taa.RSI(dataframe, timeperiod=14)
@@ -166,26 +173,9 @@ class Dracula(IStrategy):
         prev1 = dataframe.shift(2)
         lost_protect = (dataframe['ema'] > (dataframe['close'] * 1.07)).rolling(10).sum() == 0
 
-        # dataframe.loc[
-        #     (
-        #         (dataframe['low'] < (dataframe['ema_16'] * self.low_offset.value)) &
-        #         (dataframe['EWO'] > self.ewo_high.value) &
-        #         (dataframe['ema'] < dataframe['close']) &
-        #         (dataframe['rsi'] < self.rsi_buy.value) &
-        #         (dataframe['volume'] > 0)
-        #     ),
-        #     ['buy', 'buy_tag']] = (1, 'sma_1')
-
-        # dataframe.loc[
-        #     (
-        #         (dataframe['low'] < (dataframe['ema_16'] * self.low_offset.value)) &
-        #         (dataframe['EWO'] < self.ewo_low.value) &
-        #         (dataframe['ema'] < dataframe['close']) &
-        #         (dataframe['volume'] > 0)
-        #     ),
-        #     ['buy', 'buy_tag']] = (1, 'sma_2')
         item_buy_logic = []
         item_buy_logic.append(dataframe['volume'] > 0)
+        item_buy_logic.append(dataframe['cmf'] > 0)
         item_buy_logic.append(prev['bb_bbl_i'] == 1)
         item_buy_logic.append(prev['close'] >= prev1['support'])
         item_buy_logic.append(prev['ema'] < prev['close'])
@@ -199,6 +189,7 @@ class Dracula(IStrategy):
 
         item_buy_logic = []
         item_buy_logic.append(dataframe['volume'] > 0)
+        item_buy_logic.append(dataframe['cmf'] > 0)
         item_buy_logic.append(dataframe['bb_bbl_i'] == 1)
         item_buy_logic.append(dataframe['open'] >= prev1['support'])
         item_buy_logic.append(prev['ema'] < prev['close'])
